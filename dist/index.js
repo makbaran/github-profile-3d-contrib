@@ -51,27 +51,44 @@ const aggregateUserInfo = (response) => {
         contributionLevel: toNumberContributionLevel(week.contributionLevel),
         date: new Date(week.date),
     }));
-    const contributesLanguage = {};
-    user.contributionsCollection.commitContributionsByRepository
-        .filter((repo) => repo.repository.primaryLanguage)
-        .forEach((repo) => {
-        var _a, _b;
-        const language = ((_a = repo.repository.primaryLanguage) === null || _a === void 0 ? void 0 : _a.name) || '';
-        const color = ((_b = repo.repository.primaryLanguage) === null || _b === void 0 ? void 0 : _b.color) || OTHER_COLOR;
-        const contributions = repo.contributions.totalCount;
-        const info = contributesLanguage[language];
-        if (info) {
-            info.contributions += contributions;
-        }
-        else {
-            contributesLanguage[language] = {
-                language: language,
-                color: color,
-                contributions: contributions,
-            };
-        }
+    const repositoryLanguages = {};
+    user.repositories.nodes.forEach((repo) => {
+        var _a;
+        (_a = repo.languages) === null || _a === void 0 ? void 0 : _a.edges.forEach(({ size, node }) => {
+            const info = repositoryLanguages[node.name];
+            if (info) {
+                info.size += size;
+            }
+            else {
+                repositoryLanguages[node.name] = {
+                    language: node.name,
+                    color: node.color || OTHER_COLOR,
+                    size,
+                };
+            }
+        });
     });
-    const languages = Object.values(contributesLanguage).sort((obj1, obj2) => -compare(obj1.contributions, obj2.contributions));
+    if (Object.keys(repositoryLanguages).length === 0) {
+        user.contributionsCollection.commitContributionsByRepository
+            .filter((repo) => repo.repository.primaryLanguage)
+            .forEach((repo) => {
+            var _a;
+            const language = ((_a = repo.repository.primaryLanguage) === null || _a === void 0 ? void 0 : _a.name) || '';
+            const info = repositoryLanguages[language];
+            if (info) {
+                info.size += repo.contributions.totalCount;
+            }
+            else {
+                var _b;
+                repositoryLanguages[language] = {
+                    language,
+                    color: ((_b = repo.repository.primaryLanguage) === null || _b === void 0 ? void 0 : _b.color) || OTHER_COLOR,
+                    size: repo.contributions.totalCount,
+                };
+            }
+        });
+    }
+    const languages = Object.values(repositoryLanguages).sort((obj1, obj2) => -compare(obj1.size, obj2.size));
     const totalForkCount = user.repositories.nodes
         .map((node) => node.forkCount)
         .reduce((num1, num2) => num1 + num2, 0);
@@ -81,7 +98,7 @@ const aggregateUserInfo = (response) => {
     const userInfo = {
         isHalloween: user.contributionsCollection.contributionCalendar.isHalloween,
         contributionCalendar: calendar,
-        contributesLanguage: languages,
+        repositoryLanguages: languages,
         totalContributions: user.contributionsCollection.contributionCalendar
             .totalContributions,
         totalCommitContributions: user.contributionsCollection.totalCommitContributions,
@@ -589,20 +606,26 @@ exports.createPieLanguage = void 0;
 const d3 = __importStar(__nccwpck_require__(85871));
 const OTHER_NAME = 'other';
 const OTHER_COLOR = '#444444';
+const PRIORITY_LANGUAGES = ['C', 'C++'];
 const createPieLanguage = (svg, userInfo, x, y, width, height, settings, isForcedAnimation) => {
-    if (userInfo.totalContributions === 0) {
+    if (userInfo.repositoryLanguages.length === 0) {
         return;
     }
-    const languages = userInfo.contributesLanguage.slice(0, 5);
-    const sumContrib = languages
-        .map((lang) => lang.contributions)
-        .reduce((a, b) => a + b, 0);
-    const otherContributions = userInfo.totalCommitContributions - sumContrib;
-    if (0 < otherContributions) {
+    const topLanguages = userInfo.repositoryLanguages.slice(0, 5);
+    const visibleNames = new Set(topLanguages.map(({ language }) => language));
+    PRIORITY_LANGUAGES.forEach((language) => {
+        if (userInfo.repositoryLanguages.some((item) => item.language === language)) {
+            visibleNames.add(language);
+        }
+    });
+    const languages = userInfo.repositoryLanguages.filter(({ language }) => visibleNames.has(language));
+    const visibleSize = languages.map((lang) => lang.size).reduce((a, b) => a + b, 0);
+    const otherSize = userInfo.repositoryLanguages.map((lang) => lang.size).reduce((a, b) => a + b, 0) - visibleSize;
+    if (0 < otherSize) {
         languages.push({
             language: OTHER_NAME,
             color: OTHER_COLOR,
-            contributions: otherContributions,
+            size: otherSize,
         });
     }
     const isAnimate = settings.growingAnimation || isForcedAnimation;
@@ -618,7 +641,7 @@ const createPieLanguage = (svg, userInfo, x, y, width, height, settings, isForce
     const fontSize = height / row / 1.5;
     const pie = d3
         .pie()
-        .value((d) => d.contributions)
+        .value((d) => d.size)
         .sortValues(null);
     const pieData = pie(languages);
     const group = svg.append('g').attr('transform', `translate(${x}, ${y})`);
@@ -684,7 +707,7 @@ const createPieLanguage = (svg, userInfo, x, y, width, height, settings, isForce
         .attr('stroke-width', '2px');
     paths
         .append('title')
-        .text((d) => `${d.data.language} ${d.data.contributions}`);
+        .text((d) => `${d.data.language} ${d.data.size} bytes`);
     if (isAnimate) {
         paths
             .append('animate')
@@ -1109,6 +1132,15 @@ const fetchFirst = async (token, userName, year = null) => {
                         nodes {
                             forkCount
                             stargazerCount
+                            languages(first: 100, orderBy: {field: SIZE, direction: DESC}) {
+                                edges {
+                                    size
+                                    node {
+                                        name
+                                        color
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1137,6 +1169,15 @@ const fetchNext = async (token, userName, cursor) => {
                         nodes {
                             forkCount
                             stargazerCount
+                            languages(first: 100, orderBy: {field: SIZE, direction: DESC}) {
+                                edges {
+                                    size
+                                    node {
+                                        name
+                                        color
+                                    }
+                                }
+                            }
                         }
                     }
                 }

@@ -49,28 +49,46 @@ export const aggregateUserInfo = (
             ),
             date: new Date(week.date),
         }));
-    const contributesLanguage: { [language: string]: type.LangInfo } = {};
-    user.contributionsCollection.commitContributionsByRepository
-        .filter((repo) => repo.repository.primaryLanguage)
-        .forEach((repo) => {
-            const language = repo.repository.primaryLanguage?.name || '';
-            const color = repo.repository.primaryLanguage?.color || OTHER_COLOR;
-            const contributions = repo.contributions.totalCount;
-
-            const info = contributesLanguage[language];
+    const repositoryLanguages: { [language: string]: type.LangInfo } = {};
+    user.repositories.nodes.forEach((repo) => {
+        repo.languages?.edges.forEach(({ size, node }) => {
+            const info = repositoryLanguages[node.name];
             if (info) {
-                info.contributions += contributions;
+                info.size += size;
             } else {
-                contributesLanguage[language] = {
-                    language: language,
-                    color: color,
-                    contributions: contributions,
+                repositoryLanguages[node.name] = {
+                    language: node.name,
+                    color: node.color || OTHER_COLOR,
+                    size,
                 };
             }
         });
+    });
+
+    // Older API fixtures or cached responses may not include repository languages.
+    // Keep a fallback for those responses; current GraphQL requests include languages.
+    if (Object.keys(repositoryLanguages).length === 0) {
+        user.contributionsCollection.commitContributionsByRepository
+            .filter((repo) => repo.repository.primaryLanguage)
+            .forEach((repo) => {
+                const language = repo.repository.primaryLanguage?.name || '';
+                const info = repositoryLanguages[language];
+                if (info) {
+                    info.size += repo.contributions.totalCount;
+                } else {
+                    repositoryLanguages[language] = {
+                        language,
+                        color:
+                            repo.repository.primaryLanguage?.color || OTHER_COLOR,
+                        size: repo.contributions.totalCount,
+                    };
+                }
+            });
+    }
+
     const languages: Array<type.LangInfo> = Object.values(
-        contributesLanguage,
-    ).sort((obj1, obj2) => -compare(obj1.contributions, obj2.contributions));
+        repositoryLanguages,
+    ).sort((obj1, obj2) => -compare(obj1.size, obj2.size));
 
     const totalForkCount = user.repositories.nodes
         .map((node) => node.forkCount)
@@ -82,7 +100,7 @@ export const aggregateUserInfo = (
         isHalloween:
             user.contributionsCollection.contributionCalendar.isHalloween,
         contributionCalendar: calendar,
-        contributesLanguage: languages,
+        repositoryLanguages: languages,
         totalContributions:
             user.contributionsCollection.contributionCalendar
                 .totalContributions,

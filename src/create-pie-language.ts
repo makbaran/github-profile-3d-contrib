@@ -3,6 +3,7 @@ import * as type from './type';
 
 const OTHER_NAME = 'other';
 const OTHER_COLOR = '#444444';
+const PRIORITY_LANGUAGES = ['C', 'C++'];
 
 export const createPieLanguage = (
     svg: d3.Selection<SVGSVGElement, unknown, null, unknown>,
@@ -14,20 +15,35 @@ export const createPieLanguage = (
     settings: type.PieLangSettings,
     isForcedAnimation: boolean,
 ): void => {
-    if (userInfo.totalContributions === 0) {
+    if (userInfo.repositoryLanguages.length === 0) {
         return;
     }
 
-    const languages = userInfo.contributesLanguage.slice(0, 5);
-    const sumContrib = languages
-        .map((lang) => lang.contributions)
+    const topLanguages = userInfo.repositoryLanguages.slice(0, 5);
+    const visibleNames = new Set(topLanguages.map(({ language }) => language));
+    PRIORITY_LANGUAGES.forEach((language) => {
+        if (
+            userInfo.repositoryLanguages.some(
+                (item) => item.language === language,
+            )
+        ) {
+            visibleNames.add(language);
+        }
+    });
+    const languages = userInfo.repositoryLanguages.filter(({ language }) =>
+        visibleNames.has(language),
+    );
+    const visibleSize = languages
+        .map((lang) => lang.size)
         .reduce((a, b) => a + b, 0);
-    const otherContributions = userInfo.totalCommitContributions - sumContrib;
-    if (0 < otherContributions) {
+    const otherSize = userInfo.repositoryLanguages
+        .map((lang) => lang.size)
+        .reduce((a, b) => a + b, 0) - visibleSize;
+    if (0 < otherSize) {
         languages.push({
             language: OTHER_NAME,
             color: OTHER_COLOR,
-            contributions: otherContributions,
+            size: otherSize,
         });
     }
 
@@ -48,7 +64,7 @@ export const createPieLanguage = (
 
     const pie = d3
         .pie<type.LangInfo>()
-        .value((d) => d.contributions)
+        .value((d) => d.size)
         .sortValues(null);
     const pieData = pie(languages);
 
@@ -120,7 +136,7 @@ export const createPieLanguage = (
         .attr('stroke-width', '2px');
     paths
         .append('title')
-        .text((d) => `${d.data.language} ${d.data.contributions}`);
+        .text((d) => `${d.data.language} ${d.data.size} bytes`);
     if (isAnimate) {
         paths
             .append('animate')

@@ -38,6 +38,16 @@ export type Repositories = {
     nodes: Array<{
         forkCount: number;
         stargazerCount: number;
+        languages?: {
+            edges: Array<{
+                size: number;
+                node: {
+                    name: string;
+                    /** "#RRGGBB" */
+                    color: string | null;
+                };
+            }>;
+        };
     }>;
 };
 
@@ -131,6 +141,15 @@ export const fetchFirst = async (
                         nodes {
                             forkCount
                             stargazerCount
+                            languages(first: 100, orderBy: {field: SIZE, direction: DESC}) {
+                                edges {
+                                    size
+                                    node {
+                                        name
+                                        color
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -164,6 +183,15 @@ export const fetchNext = async (
                         nodes {
                             forkCount
                             stargazerCount
+                            languages(first: 100, orderBy: {field: SIZE, direction: DESC}) {
+                                edges {
+                                    size
+                                    node {
+                                        name
+                                        color
+                                    }
+                                }
+                            }
                         }
                     }
                 }

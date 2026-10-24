@@ -7,13 +7,13 @@ export interface CalendarInfo {
 export interface LangInfo {
     language: string;
     color: string;
-    contributions: number;
+    size: number;
 }
 
 export interface UserInfo {
     isHalloween: boolean;
     contributionCalendar: Array<CalendarInfo>;
-    contributesLanguage: Array<LangInfo>;
+    repositoryLanguages: Array<LangInfo>;
     totalContributions: number;
     totalCommitContributions: number;
     totalIssueContributions: number;
